@@ -150,4 +150,6 @@ Capturas reales tomadas en el emulador de Android Studio (Medium Phone, API 37).
 
 ## Repositorio
 
-Pendiente de subir a GitHub. La URL se entrega en el campus virtual.
+Código fuente: <https://github.com/abelcv007-cmyk/PhotoCollage>
+
+Para descargarlo: `git clone https://github.com/abelcv007-cmyk/PhotoCollage.git` y abrir la carpeta con Android Studio (*File ▸ Open*).
