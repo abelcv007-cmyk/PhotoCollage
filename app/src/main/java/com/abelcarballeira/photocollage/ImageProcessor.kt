@@ -109,9 +109,17 @@ object ImageProcessor {
 
     // ------------------------------------------------------------------ Edición
 
+    /** Igual que [render], con todos los ajustes agrupados. */
+    fun render(original: Bitmap, edit: EditSettings): Bitmap =
+        render(original, edit.filter, edit.rotation, edit.brightness, edit.saturation, edit.text)
+
     /**
      * Devuelve una imagen NUEVA con los ajustes aplicados sobre [original], que no se toca.
      * Si no hay ningún ajuste se devuelve la propia [original] (la foto "restaurada").
+     *
+     * Es una operación pesada (reserva y dibuja un Bitmap completo): hay que llamarla desde un
+     * hilo secundario. El resultado solo depende de [original] y de los ajustes recibidos,
+     * nunca de ediciones anteriores, así que editar muchas veces no degrada la foto.
      */
     fun render(
         original: Bitmap,
@@ -121,7 +129,7 @@ object ImageProcessor {
         saturation: Int,
         text: PhotoText?
     ): Bitmap {
-        val turns = ((rotation % 360) + 360) % 360
+        val turns = CollageLogic.normalizeTurns(rotation)
         val overlay = text?.takeIf { it.text.isNotBlank() }
         val untouched = filter == PhotoFilter.NONE && turns == 0 &&
             brightness == CollageLogic.DEFAULT_BRIGHTNESS &&
@@ -130,7 +138,7 @@ object ImageProcessor {
 
         val width = original.width
         val height = original.height
-        val sideways = turns % 180 != 0
+        val sideways = CollageLogic.swapsSides(turns)
         val outWidth = if (sideways) height else width
         val outHeight = if (sideways) width else height
 
@@ -143,35 +151,14 @@ object ImageProcessor {
             postTranslate((outWidth - width) / 2f, (outHeight - height) / 2f)
         }
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
-            colorFilter = ColorMatrixColorFilter(buildColorMatrix(filter, brightness, saturation))
+            colorFilter = ColorMatrixColorFilter(
+                ColorMatrix(CollageLogic.colorMatrix(filter, brightness, saturation))
+            )
         }
         canvas.drawBitmap(original, matrix, paint)
 
         if (overlay != null) drawText(canvas, overlay, outWidth, outHeight)
         return result
-    }
-
-    /** Orden: saturación → filtro (gris o sepia) → brillo. */
-    private fun buildColorMatrix(filter: PhotoFilter, brightness: Int, saturation: Int): ColorMatrix {
-        val matrix = ColorMatrix()
-        matrix.setSaturation(CollageLogic.saturationScale(saturation))
-        when (filter) {
-            PhotoFilter.GRAYSCALE -> matrix.postConcat(ColorMatrix().apply { setSaturation(0f) })
-            PhotoFilter.SEPIA -> matrix.postConcat(ColorMatrix(CollageLogic.SEPIA_MATRIX))
-            PhotoFilter.NONE -> Unit
-        }
-        val offset = CollageLogic.brightnessOffset(brightness)
-        matrix.postConcat(
-            ColorMatrix(
-                floatArrayOf(
-                    1f, 0f, 0f, 0f, offset,
-                    0f, 1f, 0f, 0f, offset,
-                    0f, 0f, 1f, 0f, offset,
-                    0f, 0f, 0f, 1f, 0f
-                )
-            )
-        )
-        return matrix
     }
 
     /** Texto blanco con contorno negro (legible sobre cualquier foto), centrado horizontalmente. */

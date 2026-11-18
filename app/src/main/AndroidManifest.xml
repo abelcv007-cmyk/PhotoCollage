@@ -12,6 +12,12 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!--
+        largeHeap: cada foto se guarda reducida (lado mayor de 1024 px: unos 4 MB como máximo) y, si se
+        edita, además su copia editada (otros 4 MB). Con decenas de fotos editadas se puede superar el
+        límite normal de memoria de un móvil; largeHeap lo amplía como margen de seguridad. Si aun así
+        falta memoria, leer o editar una foto se cancela con un aviso en lugar de cerrar la app.
+    -->
     <application
         android:allowBackup="false"
         android:largeHeap="true"

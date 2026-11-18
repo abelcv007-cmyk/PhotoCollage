@@ -20,8 +20,6 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.max
-import kotlin.math.min
 
 /** Genera la imagen final del collage y la comparte o la guarda en la galería. */
 object CollageExporter {
@@ -33,29 +31,28 @@ object CollageExporter {
 
     // ------------------------------------------------------------------ Imagen final
 
-    /** Dibuja todas las fotos (ya editadas) en una cuadrícula, respetando su proporción. */
+    /**
+     * Dibuja todas las fotos (ya editadas) en una cuadrícula, respetando su proporción.
+     * Operación pesada: se llama desde un hilo secundario. El Bitmap devuelto es nuevo y lo
+     * puede liberar (recycle) quien lo pida cuando termine de usarlo.
+     */
     fun render(photos: List<Photo>, columns: Int): Bitmap {
-        val cols = columns.coerceIn(CollageLogic.MIN_COLUMNS, CollageLogic.MAX_COLUMNS)
-        val rows = CollageLogic.rowsFor(photos.size, cols)
-        val cell = CollageLogic.cellSize(cols, rows)
-        val gap = max(4, cell / 40)
-
-        val width = cols * cell + (cols + 1) * gap
-        val height = max(1, rows) * cell + (max(1, rows) + 1) * gap
-        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val layout = CollageLogic.layoutFor(photos.size, columns)
+        val cell = layout.cell
+        val result = Bitmap.createBitmap(layout.width, layout.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         canvas.drawColor(Color.WHITE)
 
         val photoPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         val cellPaint = Paint().apply { color = CELL_BACKGROUND }
         photos.forEachIndexed { index, photo ->
-            val left = gap + (index % cols) * (cell + gap)
-            val top = gap + (index / cols) * (cell + gap)
+            val left = layout.left(index)
+            val top = layout.top(index)
             canvas.drawRect(left.toFloat(), top.toFloat(), (left + cell).toFloat(), (top + cell).toFloat(), cellPaint)
 
             // La foto se ajusta dentro de su celda sin deformarse (se mantiene la proporción).
             val source = photo.display
-            val scale = min(cell.toFloat() / source.width, cell.toFloat() / source.height)
+            val scale = CollageLogic.scaleToFit(source.width, source.height, cell)
             val drawWidth = source.width * scale
             val drawHeight = source.height * scale
             val target = RectF(
@@ -69,7 +66,8 @@ object CollageExporter {
         return result
     }
 
-    private val CELL_BACKGROUND = Color.rgb(0xEC, 0xE8, 0xF5)
+    /** Color de fondo de cada celda del collage exportado (se ve en las zonas que la foto no cubre). */
+    internal val CELL_BACKGROUND = Color.rgb(0xEC, 0xE8, 0xF5)
 
     // ------------------------------------------------------------------ Compartir
 

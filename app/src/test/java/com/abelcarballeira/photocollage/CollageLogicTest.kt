@@ -83,4 +83,101 @@ class CollageLogicTest {
         assertTrue(CollageLogic.cellSize(columns = 1, rows = 40) * 40 <= 3000)
         assertTrue(CollageLogic.cellSize(columns = 1, rows = 0) > 0)
     }
+
+    // ------------------------------------------------------------------ Giro
+
+    @Test
+    fun turns_areNormalizedToAFullCircle() {
+        assertEquals(0, CollageLogic.normalizeTurns(0))
+        assertEquals(90, CollageLogic.normalizeTurns(450))
+        assertEquals(270, CollageLogic.normalizeTurns(-90))
+        assertEquals(0, CollageLogic.normalizeTurns(-360))
+    }
+
+    @Test
+    fun onlyQuarterTurnsSwapWidthAndHeight() {
+        assertEquals(listOf(false, true, false, true), listOf(0, 90, 180, 270).map { CollageLogic.swapsSides(it) })
+        assertTrue(CollageLogic.swapsSides(-90))
+        assertTrue(!CollageLogic.swapsSides(360))
+    }
+
+    // ------------------------------------------------------------------ Columnas
+
+    @Test
+    fun columns_areLimitedToTheAllowedRange() {
+        assertEquals(1, CollageLogic.clampColumns(0))
+        assertEquals(1, CollageLogic.clampColumns(-4))
+        assertEquals(1, CollageLogic.clampColumns(1))
+        assertEquals(3, CollageLogic.clampColumns(3))
+        assertEquals(6, CollageLogic.clampColumns(6))
+        assertEquals(6, CollageLogic.clampColumns(7))
+        assertEquals(6, CollageLogic.clampColumns(Int.MAX_VALUE))
+    }
+
+    // ------------------------------------------------------------------ Generación del collage
+
+    @Test
+    fun layout_threePhotosInTwoColumns_needsTwoRows() {
+        val layout = CollageLogic.layoutFor(photoCount = 3, columns = 2)
+        assertEquals(2, layout.columns)
+        assertEquals(2, layout.rows)
+        assertEquals(512, layout.cell)
+        assertEquals(12, layout.gap) // 512 / 40
+        assertEquals(2 * 512 + 3 * 12, layout.width)
+        assertEquals(2 * 512 + 3 * 12, layout.height)
+    }
+
+    @Test
+    fun layout_placesEveryPhotoInItsOwnCell() {
+        val layout = CollageLogic.layoutFor(photoCount = 4, columns = 2)
+        val step = layout.cell + layout.gap
+        assertEquals(layout.gap, layout.left(0))
+        assertEquals(layout.gap, layout.top(0))
+        assertEquals(layout.gap + step, layout.left(1))
+        assertEquals(layout.gap, layout.top(1))
+        assertEquals(layout.gap, layout.left(2))
+        assertEquals(layout.gap + step, layout.top(2))
+        assertEquals(layout.gap + step, layout.left(3))
+        assertEquals(layout.gap + step, layout.top(3))
+        // La última celda cabe dentro de la imagen.
+        assertTrue(layout.left(3) + layout.cell <= layout.width)
+        assertTrue(layout.top(3) + layout.cell <= layout.height)
+    }
+
+    @Test
+    fun layout_usesTheColumnLimits() {
+        assertEquals(1, CollageLogic.layoutFor(5, 0).columns)
+        assertEquals(1, CollageLogic.layoutFor(5, -3).columns)
+        val widest = CollageLogic.layoutFor(photoCount = 7, columns = 99)
+        assertEquals(6, widest.columns)
+        assertEquals(2, widest.rows)
+        assertEquals(500, widest.cell) // 3000 / 6
+        assertEquals(12, widest.gap)
+        assertEquals(6 * 500 + 7 * 12, widest.width)
+    }
+
+    @Test
+    fun layout_neverProducesAnEmptyOrHugeImage() {
+        val empty = CollageLogic.layoutFor(photoCount = 0, columns = 2)
+        assertEquals(0, empty.rows)
+        assertTrue(empty.width > 0 && empty.height > 0)
+
+        val tall = CollageLogic.layoutFor(photoCount = 40, columns = 1)
+        assertEquals(75, tall.cell) // 3000 / 40
+        assertEquals(4, tall.gap) // el margen mínimo es 4
+        assertEquals(40 * 75 + 41 * 4, tall.height)
+    }
+
+    @Test
+    fun scaleToFit_keepsTheProportionInsideTheCell() {
+        // 200×100 en una celda de 512: el lado largo ocupa la celda (512×256), sin deformar.
+        val wide = CollageLogic.scaleToFit(200, 100, 512)
+        assertEquals(2.56f, wide, 0.0001f)
+        assertEquals(512f, 200 * wide, 0.01f)
+        assertEquals(256f, 100 * wide, 0.01f)
+        // Vertical: es el alto el que manda.
+        assertEquals(2.56f, CollageLogic.scaleToFit(100, 200, 512), 0.0001f)
+        // Una foto mayor que la celda se reduce.
+        assertTrue(CollageLogic.scaleToFit(1024, 768, 512) < 1f)
+    }
 }

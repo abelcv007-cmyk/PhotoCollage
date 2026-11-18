@@ -3,11 +3,14 @@ package com.abelcarballeira.photocollage
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -28,8 +32,14 @@ sealed interface UiEvent {
 /**
  * Guarda el estado del collage. Como es un ViewModel, las fotos y sus ajustes sobreviven
  * a los giros de pantalla y a otros cambios de configuración.
- * Todo el estado se modifica en el hilo principal; las tareas pesadas (leer fotos, generar la
- * imagen final) se hacen en hilos secundarios.
+ * Todo el estado se modifica en el hilo principal; las tareas pesadas (leer fotos, editar una
+ * foto, generar la imagen final) se hacen en hilos secundarios.
+ *
+ * Edición sin bloquear la pantalla: los ajustes de una foto se guardan al instante, pero su imagen
+ * se recalcula en segundo plano con un solo trabajo por foto. Si mientras tanto llegan más cambios
+ * (por ejemplo, al arrastrar un deslizador) no se lanzan trabajos nuevos: al terminar, el mismo
+ * trabajo vuelve a calcular con los ajustes más recientes. Así se saltan los valores intermedios y
+ * una edición antigua nunca pisa a una más nueva.
  */
 class CollageViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -41,7 +51,15 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
 
     private var nextId = 1L
     private var nextNumber = 1
-    private var activeLoads = 0
+    private var activeWork = 0
+
+    /** Un trabajo de edición por foto y la exportación en curso. Solo se tocan desde el hilo principal. */
+    private val renderJobs = HashMap<Long, Job>()
+    private var exportJob: Job? = null
+
+    /** Cuántos cálculos de imagen se han iniciado desde que existe el ViewModel (lo usan las pruebas). */
+    internal var rendersStarted = 0
+        private set
 
     // ------------------------------------------------------------------ Añadir fotos
 
@@ -54,8 +72,7 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
         var failed = 0
 
         viewModelScope.launch {
-            activeLoads++
-            _state.update { it.copy(loading = true) }
+            beginWork()
             try {
                 val resolver = getApplication<Application>().contentResolver
                 for (uri in fresh) {
@@ -74,8 +91,7 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
                     added++
                 }
             } finally {
-                activeLoads--
-                _state.update { it.copy(loading = activeLoads > 0) }
+                endWork()
             }
             reportAddResult(added, duplicates, failed)
         }
@@ -104,12 +120,17 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
             say(str(R.string.msg_select_to_delete))
             return
         }
+        // Se deja de calcular su imagen y se suelta la referencia: el recolector libera sus Bitmap.
+        // No se usa Bitmap.recycle(): la lista aún puede estar dibujando la foto durante la animación.
+        renderJobs.remove(selected.id)?.cancel()
         _state.update { s -> s.copy(photos = s.photos.filterNot { it.id == selected.id }) }
         say(str(R.string.msg_deleted, selected.number))
     }
 
     fun deleteAll() {
         nextNumber = 1
+        renderJobs.values.forEach { it.cancel() }
+        renderJobs.clear()
         _state.update { it.copy(photos = emptyList()) }
         say(str(R.string.msg_deleted_all))
     }
@@ -158,58 +179,102 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
 
     fun setText(text: PhotoText?) = editSelected(R.string.msg_select_to_text) { it.copy(text = text) }
 
+    /** Guarda los nuevos ajustes de la foto seleccionada y pide recalcular su imagen en segundo plano. */
     private fun editSelected(@StringRes noSelectionMessage: Int?, change: (Photo) -> Photo) {
         val selected = _state.value.selected
         if (selected == null) {
             if (noSelectionMessage != null) say(str(noSelectionMessage))
             return
         }
-        val edited = change(selected)
-        try {
-            val display = ImageProcessor.render(
-                edited.original, edited.filter, edited.rotation, edited.brightness, edited.saturation, edited.text
-            )
-            val updated = edited.copy(display = display)
-            _state.update { s ->
-                s.copy(photos = s.photos.map { if (it.id == updated.id) updated.copy(selected = it.selected) else it })
+        _state.update { s -> s.copy(photos = s.photos.map { if (it.id == selected.id) change(it) else it }) }
+        scheduleRender(selected.id)
+    }
+
+    /** Si ya hay un trabajo calculando esta foto no se lanza otro: ese recogerá los ajustes más nuevos. */
+    private fun scheduleRender(id: Long) {
+        if (renderJobs[id]?.isActive == true) return
+        renderJobs[id] = viewModelScope.launch { renderUntilCurrent(id) }
+    }
+
+    /** Calcula la imagen de la foto hasta que coincide con sus ajustes actuales. */
+    private suspend fun renderUntilCurrent(id: Long) {
+        while (true) {
+            val photo = _state.value.photos.firstOrNull { it.id == id } ?: return // eliminada mientras tanto
+            if (!photo.needsRender) return
+            val target = photo.edit
+            rendersStarted++
+            val display = try {
+                withContext(Dispatchers.Default) { ImageProcessor.render(photo.original, target) }
+            } catch (e: OutOfMemoryError) {
+                // Sin memoria: los ajustes vuelven a los de la imagen que se está viendo, para que coincidan.
+                replacePhoto(id) { it.withEdit(it.renderedWith) }
+                say(str(R.string.msg_out_of_memory))
+                return
             }
-        } catch (e: OutOfMemoryError) {
-            say(str(R.string.msg_out_of_memory))
+            replacePhoto(id) { it.copy(display = display, renderedWith = target) }
+        }
+    }
+
+    private fun replacePhoto(id: Long, change: (Photo) -> Photo) {
+        _state.update { s -> s.copy(photos = s.photos.map { if (it.id == id) change(it) else it }) }
+    }
+
+    /** Espera a que terminen todas las ediciones en curso, para exportar siempre lo último que se ve. */
+    private suspend fun awaitPendingRenders() {
+        while (true) {
+            val running = renderJobs.values.filter { it.isActive }
+            if (running.isEmpty()) return
+            running.joinAll()
         }
     }
 
     // ------------------------------------------------------------------ Distribución
 
     fun setColumns(columns: Int) {
-        _state.update { it.copy(columns = columns.coerceIn(CollageLogic.MIN_COLUMNS, CollageLogic.MAX_COLUMNS)) }
+        _state.update { it.copy(columns = CollageLogic.clampColumns(columns)) }
     }
 
     // ------------------------------------------------------------------ Exportar
 
-    fun share() {
-        if (!requireNotEmpty()) return
-        viewModelScope.launch {
-            val bitmap = renderCollage() ?: return@launch
-            try {
-                val context = getApplication<Application>()
-                val uri = withContext(Dispatchers.IO) { CollageExporter.writeForSharing(context, bitmap) }
-                events.send(UiEvent.Share(uri))
-            } catch (e: IOException) {
-                say(str(R.string.msg_share_error))
-            }
-        }
+    fun share() = export(R.string.msg_share_error) { bitmap ->
+        val context = getApplication<Application>()
+        val uri = withContext(Dispatchers.IO) { CollageExporter.writeForSharing(context, bitmap) }
+        events.send(UiEvent.Share(uri))
     }
 
-    fun saveToGallery() {
+    fun saveToGallery() = export(R.string.msg_save_error) { bitmap ->
+        val context = getApplication<Application>()
+        withContext(Dispatchers.IO) { CollageExporter.saveToGallery(context, bitmap) }
+        say(str(R.string.msg_saved), long = true)
+    }
+
+    /**
+     * Genera la imagen final con lo que se ve en pantalla y se la entrega a [deliver].
+     * No se exporta un collage vacío y solo hay una exportación a la vez: un toque repetido no
+     * lanza otra imagen grande en paralelo.
+     */
+    private fun export(@StringRes errorMessage: Int, deliver: suspend (Bitmap) -> Unit) {
         if (!requireNotEmpty()) return
-        viewModelScope.launch {
-            val bitmap = renderCollage() ?: return@launch
+        if (exportJob?.isActive == true) return
+        exportJob = viewModelScope.launch {
+            beginWork()
             try {
-                val context = getApplication<Application>()
-                withContext(Dispatchers.IO) { CollageExporter.saveToGallery(context, bitmap) }
-                say(str(R.string.msg_saved), long = true)
-            } catch (e: IOException) {
-                say(str(R.string.msg_save_error))
+                awaitPendingRenders()
+                val bitmap = renderCollage() ?: return@launch
+                try {
+                    deliver(bitmap)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // MediaStore y FileProvider pueden fallar con IOException, SecurityException o
+                    // IllegalArgumentException: en todos los casos se avisa al usuario sin cerrar la app.
+                    Log.w(TAG, "No se pudo exportar el collage", e)
+                    say(str(errorMessage))
+                } finally {
+                    bitmap.recycle() // el collage final es un Bitmap grande que ya no hace falta
+                }
+            } finally {
+                endWork()
             }
         }
     }
@@ -217,6 +282,10 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
     /** Dibuja la imagen final con todas las fotos y su edición actual. */
     private suspend fun renderCollage(): Bitmap? {
         val current = _state.value
+        if (current.photos.isEmpty()) { // se vació el collage mientras se esperaba
+            say(str(R.string.msg_collage_empty))
+            return null
+        }
         return try {
             withContext(Dispatchers.Default) { CollageExporter.render(current.photos, current.columns) }
         } catch (e: OutOfMemoryError) {
@@ -227,6 +296,17 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
 
     // ------------------------------------------------------------------ Utilidades
 
+    /** El indicador de progreso se ve mientras haya alguna tarea larga (leer fotos o generar el collage). */
+    private fun beginWork() {
+        activeWork++
+        _state.update { it.copy(loading = true) }
+    }
+
+    private fun endWork() {
+        activeWork--
+        _state.update { it.copy(loading = activeWork > 0) }
+    }
+
     private fun say(text: String, long: Boolean = false) {
         events.trySend(UiEvent.Message(text, long))
     }
@@ -236,4 +316,8 @@ class CollageViewModel(application: Application) : AndroidViewModel(application)
 
     private fun plural(@PluralsRes id: Int, count: Int): String =
         getApplication<Application>().resources.getQuantityString(id, count, count)
+
+    private companion object {
+        const val TAG = "CollageViewModel"
+    }
 }
