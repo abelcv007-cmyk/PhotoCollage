@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhotoCollage</string>
+
+    <!-- Zona central -->
+    <string name="empty_title">Tu collage está vacío</string>
+    <string name="empty_hint">Pulsa «Añadir fotos» para elegir varias imágenes de tu galería.</string>
+    <string name="photo_description">Foto %1$d</string>
+    <string name="photo_description_selected">Foto %1$d, seleccionada</string>
+    <string name="photo_selected">Seleccionada</string>
+
+    <!-- Controles -->
+    <string name="section_photos">Fotos</string>
+    <string name="section_filters">Filtros de la foto seleccionada</string>
+    <string name="section_adjust">Ajustes de la foto seleccionada</string>
+    <string name="section_layout">Distribución del collage</string>
+    <string name="section_export">Resultado final</string>
+
+    <string name="btn_add">Añadir fotos</string>
+    <string name="btn_delete">Eliminar foto</string>
+    <string name="btn_delete_all">Eliminar todo</string>
+    <string name="btn_gray">Gris</string>
+    <string name="btn_sepia">Sepia</string>
+    <string name="btn_restore">Restaurar original</string>
+    <string name="btn_rotate">Girar 90°</string>
+    <string name="btn_text">Añadir texto</string>
+    <string name="btn_cols_2">2 columnas</string>
+    <string name="btn_cols_3">3 columnas</string>
+    <string name="btn_cols_custom">Personalizado</string>
+    <string name="btn_share">Compartir</string>
+    <string name="btn_save">Guardar en galería</string>
+
+    <string name="brightness_label">Brillo: %1$d</string>
+    <string name="saturation_label">Saturación: %1$d</string>
+    <string name="columns_label">Columnas: %1$d</string>
+    <string name="share_title">Compartir collage</string>
+
+    <!-- Diálogos -->
+    <string name="dialog_cancel">Cancelar</string>
+    <string name="dialog_delete_title">¿Eliminar la foto %1$d?</string>
+    <string name="dialog_delete_message">Se quitará del collage junto con sus ediciones. Esta acción no se puede deshacer.</string>
+    <string name="dialog_delete_confirm">Eliminar</string>
+    <string name="dialog_delete_all_title">¿Eliminar todas las fotos?</string>
+    <string name="dialog_delete_all_message">Se vaciará el collage y se perderán todas las ediciones. Esta acción no se puede deshacer.</string>
+    <string name="dialog_delete_all_confirm">Eliminar todo</string>
+    <string name="dialog_columns_title">Número de columnas</string>
+    <string name="dialog_text_title">Texto sobre la foto</string>
+    <string name="dialog_text_apply">Aplicar</string>
+    <string name="dialog_text_remove">Quitar texto</string>
+    <string name="text_hint">Escribe el texto</string>
+    <string name="text_size">Tamaño del texto</string>
+    <string name="text_position">Posición</string>
+    <string name="text_top">Arriba</string>
+    <string name="text_center">Centro</string>
+    <string name="text_bottom">Abajo</string>
+
+    <!-- Mensajes -->
+    <string name="msg_select_to_delete">Selecciona primero la foto que quieres eliminar</string>
+    <string name="msg_deleted">Foto %1$d eliminada</string>
+    <string name="msg_deleted_all">Collage vaciado</string>
+    <string name="msg_collage_empty">El collage está vacío: añade fotos primero</string>
+    <string name="msg_select_to_filter">Selecciona primero una foto para aplicarle un filtro o restaurarla</string>
+    <string name="msg_select_to_rotate">Selecciona primero la foto que quieres girar</string>
+    <string name="msg_select_to_text">Selecciona primero la foto en la que quieres escribir</string>
+    <string name="msg_select_to_adjust">Selecciona primero una foto para ajustarla</string>
+    <string name="msg_out_of_memory">No hay memoria suficiente para esta operación</string>
+    <string name="msg_share_error">No se pudo compartir el collage</string>
+    <string name="msg_saved">Collage guardado en Imágenes/PhotoCollage</string>
+    <string name="msg_save_error">No se pudo guardar el collage</string>
+    <string name="msg_permission_denied">Sin permiso de almacenamiento no se puede guardar el collage</string>
+
+    <plurals name="msg_added">
+        <item quantity="one">%d foto añadida</item>
+        <item quantity="other">%d fotos añadidas</item>
+    </plurals>
+    <plurals name="msg_duplicates">
+        <item quantity="one">%d foto repetida ignorada</item>
+        <item quantity="other">%d fotos repetidas ignoradas</item>
+    </plurals>
+    <plurals name="msg_failed">
+        <item quantity="one">%d foto no se pudo cargar</item>
+        <item quantity="other">%d fotos no se pudieron cargar</item>
+    </plurals>
+</resources>

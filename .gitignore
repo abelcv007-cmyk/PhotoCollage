@@ -1,0 +1,27 @@
+# Archivos de Android Studio / IntelliJ
+*.iml
+.idea/
+.kotlin/
+
+# Gradle y compilación
+.gradle/
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# Configuración local (contiene la ruta del SDK de cada equipo)
+local.properties
+
+# Claves de firma y secretos: nunca se suben al repositorio
+*.jks
+*.keystore
+keystore.properties
+
+# Registros y archivos del sistema operativo
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini

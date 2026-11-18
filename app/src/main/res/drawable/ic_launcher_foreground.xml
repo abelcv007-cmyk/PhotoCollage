@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tres teselas que forman un collage, dentro de la zona segura de 66 dp del icono adaptativo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,32h14a4,4 0,0 1,4 4v36a4,4 0,0 1,-4 4h-14a4,4 0,0 1,-4 -4v-36a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#E9E3FF"
+        android:pathData="M62,32h10a4,4 0,0 1,4 4v10a4,4 0,0 1,-4 4h-10a4,4 0,0 1,-4 -4v-10a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M62,58h10a4,4 0,0 1,4 4v10a4,4 0,0 1,-4 4h-10a4,4 0,0 1,-4 -4v-10a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#5B3CDD"
+        android:pathData="M35,70l7,-10 5,6 3,-4 4,8z" />
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M45,43m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>
